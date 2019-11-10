@@ -125,6 +125,105 @@ aws_public_key = var.aws_public_key
 ```
 To pass the value from the secrets.tfvars.json on. It is an abstraction that is pretty vague and not well documented. It kind of follows from the way terraform works. And it only makes sense when you get deeper into terraform. 
 
+**EXAMPLE**  
+Note: You need to replace my settings with yours. 
+
+```hcl-terraform
+terraform {
+  backend "s3" {
+    bucket = "terraform-states-repo"
+    key = "terraform.state"
+    region = "ap-southeast-2"
+    encrypt = true
+  }
+}
+
+provider "aws" {
+  alias = "aws"
+  region = "ap-southeast-2"
+  shared_credentials_file = "/home/terraform/.aws/credentials"
+  profile = "default"
+}
+
+variable "aws_public_key" {
+
+}
+
+
+module "kafka-cluster-test" {
+  source = "phiroict/kafka-cluster/aws"
+  version = "1.0.1"
+  # insert the 1 required variable here
+  providers = {
+    aws = "aws.aws"
+  }
+  aws_public_key = var.aws_public_key
+  base_kafka_image_ami = "ami-056df8555b0d63e37"
+  base_zookeeper_image_ami = "ami-0bbab8485567e65bf"
+  region = "ap-southeast-2"
+  build_bastion = true
+  kafka_cluster_name = "Kafka cluster"
+  zookeeper_cluster_name = "Zookeeper cluster"
+  kafka_cluster_size = 5
+  zookeeper_cluster_size = 3
+  kafka_instance_type = "m4.large"
+  zookeeper_instance_type = "m4.large"
+  kafka_exp_tags = {
+    Author = "Philip Rodrigues"
+    State = "Experimental"
+    Department = "CloudOps"
+    Description = "Experimental_kafka_cluster_instance"
+    Type = "Kafka_Instance"
+  }
+  zookeeper_exp_tags = {
+    Author = "Philip Rodrigues"
+    State = "Experimental"
+    Department = "CloudOps"
+    Description = "Experimental_zookeeper_cluster_instance"
+    Type = "Zookeeper_Instance"
+  }
+  ip_allow_access_ip4 = "118.148.93.26/32"
+  ip_allow_access_ip6 = ""
+  azs = [
+    "ap-southeast-2a",
+    "ap-southeast-2b",
+    "ap-southeast-2c"]
+  vpc_cidr = "10.201.0.0/16"
+  azs_subnets_private = {
+    "ap-southeast-2a" = "10.201.1."
+    "ap-southeast-2b" = "10.201.2."
+    "ap-southeast-2c" = "10.201.3."
+  }
+  azs_subnets_public = {
+    "ap-southeast-2a" = "10.201.101."
+    "ap-southeast-2b" = "10.201.102."
+    "ap-southeast-2c" = "10.201.103."
+  }
+}
+```
+Variables:   
+
+| var name | default | type | meaning |
+| --- | --- | --- | --- |
+| base_kafka_image_ami | "" | String | Base kafka AMI (build by packer) |
+| base_zookeeper_image_ami | "" | String | Base zookeeper AMI (build by packer) |
+|   region | "ap-southeast-2"| String | AWS region you want to deploy to |
+ |  build_bastion | true| boolean | Build a bastion to connect to, needed for ansible |
+ |  kafka_cluster_size | 3| Number | number of kafka instances |
+ |  zookeeper_cluster_size | 3| Number | number of zookeeper instances |
+ |  kafka_instance_type | "m4.large"| String | AWS instance type, needs to be available in all azs you choose later |
+ |  zookeeper_instance_type | "m4.large"| String | AWS instance type, needs to be available in all azs you choose later |
+ |  kafka_exp_tags | {<br>     Author= "Philip Rodrigues"<br>     State= "Experimental"<br>     Department= "CloudOps"<br>     Description= "Experimental_kafka_cluster_instance"<br>  } | map | Tag set for all resources supporting tags | 
+ |  zookeeper_exp_tags | {<br>     Author= "Philip Rodrigues"<br>     State= "Experimental"<br>     Department= "CloudOps"<br>     Description= "Experimental_zookeeper_cluster_instance"<br>  } | map | Tag set for all resources supporting tags |
+ |  ip_allow_access_ip4|"111.69.150.132/32" | String - cidr |IPv4 address that is allowed to connect to the bastion from the BBI
+ |  ip_allow_access_ip6|""| String - cidr |IPv6 address that is allowed to connect to the bastion from the BBI (Not implemented yet|
+ |  azs | ["ap-southeast-2a",<br>    "ap-southeast-2b",<br>   "ap-southeast-2c"]<br>| list of String | List of availability zones to run the brokers in, needs to be in the region | 
+ |  vpc_cidr | "10.201.0.0/16" | String - cidr | Main range for the VPC | 
+ |  azs_subnets_private | { <br>    "ap-southeast-2a"= "10.201.1."<br>    "ap-southeast-2b"= "10.201.2."<br>    "ap-southeast-2c"= "10.201.3."<br>  } | map | Defines ip ranges per AZ for the private broker subnet, needs to fit in the VPC selection above , is aways a /24 range|
+ |  azs_subnets_public | { <br>    "ap-southeast-2a"= "10.201.101."<br>    "ap-southeast-2b"= "10.201.102."<br>    "ap-southeast-2c"= "10.201.103."}<br> | map | Defines ip ranges per AZ for the public access, needs to fit in the VPC selection above , is aways a /24 range|
+ |  kafka_cluster_name | "MyKafkaSet"| String | Name to give to the cluster will be appended with a 0 based index|
+
+
 **OR**
 Use terragrunt 
 ```
