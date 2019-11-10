@@ -13,16 +13,19 @@ variable "base_zookeeper_image_ami" {
 variable "region" {
   type = string
   default = "ap-southeast-2"
+  description = "AWS region you want to deploy to"
 }
 
 variable "kafka_instance_type" {
   type = string
   default = "m4.large"
+  description = "AWS instance type, needs to be available in all azs you choose later"
 }
 
 variable "zookeeper_instance_type" {
   type = string
   default = "m4.large"
+  description = "AWS instance type, needs to be available in all azs you choose later"
 }
 
 variable "kafka_exp_tags" {
@@ -34,6 +37,7 @@ variable "kafka_exp_tags" {
     Description = "Experimental_kafka_cluster_instance"
     Type = "Kafka_Instance"
   }
+  description = "Tag set for all resources supporting tags"
 }
 
 variable "zookeeper_exp_tags" {
@@ -45,6 +49,7 @@ variable "zookeeper_exp_tags" {
     Description = "Experimental_kafka_cluster_instance"
     Type = "Zookeeper_Instance"
   }
+  description = "Tag set for all resources supporting tags"
 }
 
 variable "ip_allow_access_ip4" {
@@ -56,7 +61,7 @@ variable "ip_allow_access_ip4" {
 variable "ip_allow_access_ip6" {
   type = string
   default = "2406:e002:58b4:db01:92b1:1cff:fe65:6c80/128"
-  description = "Add initially your own ip6 address here"
+  description = "Add initially your own ip6 address here (Not implemented yet)"
 }
 
 
@@ -81,6 +86,7 @@ variable "build_bastion" {
 
 variable "aws_public_key" {
   type = string
+  description = "Public ssh key that will be injected into the bastions and the kafka/zookeepers instances"
 }
 
 variable "azs" {
@@ -89,11 +95,13 @@ variable "azs" {
     "ap-southeast-2a",
     "ap-southeast-2b",
     "ap-southeast-2c"]
+  description = "The Availability zones the kafka/zookeepers will be created in."
 }
 
 variable "vpc_cidr" {
   type = string
   default = "10.201.0.0/16"
+  description = "VPC ip range "
 }
 
 variable "azs_subnets_private" {
@@ -103,6 +111,7 @@ variable "azs_subnets_private" {
     "ap-southeast-2b"= "10.201.2."
     "ap-southeast-2c"= "10.201.3."
   }
+  description = "Subnet nets by az, needs to be within the VPC ip range"
 }
 
 variable "azs_subnets_public" {
@@ -112,14 +121,17 @@ variable "azs_subnets_public" {
     "ap-southeast-2b"= "10.201.102."
     "ap-southeast-2c"= "10.201.103."
   }
+  description = "Subnets for the bastion, needs to be within the VPC subnet AND NOT intersect the private subnets "
 }
 
 variable "kafka_cluster_name" {
   type = string
   default = "MyKafkaSet"
+  description = "Name the cluster gets, followed by a serial number"
 }
 
 variable "zookeeper_cluster_name" {
   type = string
   default = "MyZookeeperSet"
+  description = "Name the zookeeper cluster gets, followed by a serial number"
 }
