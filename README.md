@@ -1,9 +1,14 @@
 # Apache Kafka Cluster from scratch
-This is loosely based on the git project `https://github.com/fscm/packer-aws-kafka` that was outdated and needed to be rewritten.   
+This creates a kafka cluster on AWS. 
+He module creates the infrastructure, there is a pre and and a post stap that is outside the module's power. 
+The readme will talk you how to go the the pre and post staps. 
+
+
+This project is loosely based on the git project `https://github.com/fscm/packer-aws-kafka` that was outdated and needed to be rewritten.   
 This builds a cluster on AWS in three steps: 
-- Creating the AIMs with kafka and zookeeper using packer.
-- Creating the infrastructure on AWS using terragrunt / terraform.
-- Configuring and starting the cluster using ansible. 
+- PRE        : Creating the AIMs with kafka and zookeeper using packer.
+- THIS MODULE: Creating the infrastructure on AWS using terragrunt / terraform.
+- POST       : Configuring and starting the cluster using ansible. 
 
  This is a three stage project to create working kafka cluster.
 
@@ -29,22 +34,26 @@ zookeeper and kafka configuration tools used.
 Create a working kafka cluster in three phases using terraform, ansible and packer. 
 
 **Phase 1**  
+PRE Phase:  
 This script will create an AMI with Apache Kafka installed and with all of
 the required initialization scripts.  
 Tools: packer, aws-vault.
 
 **Phase 2**  
+Module phase:  
 The AMI resulting from this script should be the one used to instantiate a
 Kafka server (standalone or cluster).  
 Tools : Terragrunt, Terraform, aws-vault
   
 **Phase 3**  
+POST phase:  
 The configuration for anything else than stand alone is done by ansible.  
 Tools: Ansible  
 
 # TL;DR
 
 **Step Zero**  
+PRE  
 You need: 
 - An AWS account with key and secret key to accounts that allow you to create ec2, security groups, vpc, subnets, ssh keys etc. 
 - An ssh key that you can pass to the aws stack
@@ -53,7 +62,7 @@ You need:
 - All tech stack applications installed.   
 
 **Step One**  
-
+PRE  
 Setup aws-vault with 
 ```
 aws add home
@@ -61,6 +70,7 @@ aws add home
 Follow the instructions   
 
 **Step Two**  
+PRE    
 
 Now build kafka base image with (Replace values as needed) 
 There are two types, kafka and zookeeper. 
@@ -88,8 +98,39 @@ packer build \
 Grab the ami ids for both and pass through to terragrunt phase later on.
 
 **Step Three**
+MODULE  
+**Terraform-module**
 
+Note that you need to pass the secret key as a var here as you do not use the secrets file.
+You can use the env var by setting it in 
 ```
+export KEY=<your ssh key>
+terraform plan -var "aws_public_key=$KEY" -out kafka.plan
+```
+Or pass it as a configuration file. 
+```
+terraform plan -var-file secrets.tfvars.json -out kafka.plan
+```
+Note that you need to redeclare the aws_public_key and then pass it on through in the params (You need not do that in terragrunt)
+In the module declaration  add: 
+```
+variable "aws_public_key" {
+
+}
+```
+
+And in the module for example in the test module file `test/kafka-cluster-module-test.tf` add:
+```
+aws_public_key = var.aws_public_key
+```
+To pass the value from the secrets.tfvars.json on. It is an abstraction that is pretty vague and not well documented. It kind of follows from the way terraform works. And it only makes sense when you get deeper into terraform. 
+
+**OR**
+Use terragrunt 
+```
+
+ 
+
 cd terragrunt
 terragrunt plan -var "base_kafka_image_ami=<theoneyougrabbed_kafka>" -var "base_zookeeper_image_ami=<theoneyougrabbed_zookeeper>"
 terragrunt apply
@@ -103,6 +144,7 @@ and place it in `ansible/ssh.cfg` if that does not work place it in `~/.ssh/conf
 Use it as a module: see `test\kafka-cluster-module-test.tf` how to use it as a module.
 
 **Step Four**
+POST  
 
 Then run 
 ```
@@ -518,32 +560,6 @@ The following ports will have to be configured on Security Groups.
 | Kafka Broker | 9092      |    TCP   |
 
 After the theory now how we are setting these tools to be triggered by ansible. 
-
-# Terraform-module
-This can be used as a kafka module , see the example in the test folder.
-Note that you need to pass the secret key as a var here as you do not use the secrets file.
-You can use the env var by setting it in 
-```
-export KEY=<your ssh key>
-terraform plan -var "aws_public_key=$KEY" -out kafka.plan
-```
-Or pass it as a configuration file. 
-```
-terraform plan -var-file ../terragrunt/secrets.tfvars.json -out kafka.plan
-```
-Note that you need to redeclare the aws_public_key and then pass it on through in the params (You need not do that in terragrunt)
-In the module declaration  add: 
-```
-variable "aws_public_key" {
-
-}
-```
-
-And in the module for example in the test module file `test/kafka-cluster-module-test.tf` add:
-```
-aws_public_key = var.aws_public_key
-```
-To pass the value from the secrets.tfvars.json on. It is an abstraction that is pretty vague and not well documented. It kind of follows from the way terraform works. And it only makes sense when you get deeper into terraform. 
 
 
 # Wrapping up 
