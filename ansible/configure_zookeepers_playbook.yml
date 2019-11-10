@@ -1,0 +1,109 @@
+---
+- name: zookeeper configuration
+  hosts: localhost
+  become: yes
+  vars:
+    aws_region: ap-southeast-2
+  tasks:
+    - name: Get zookeeper instances
+      ec2_instance_facts:
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+        aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+        security_token: "{{ lookup('env','AWS_SECURITY_TOKEN') }}"
+        filters:
+          "tag:AnsibleType": Zookeeper
+          instance-state-name: [ "running" ]
+      register: zookeepers
+    - name: Get kafka instances
+      ec2_instance_facts:
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ lookup('env','AWS_ACCESS_KEY_ID') }}"
+        aws_secret_key: "{{ lookup('env','AWS_SECRET_ACCESS_KEY') }}"
+        security_token: "{{ lookup('env','AWS_SECURITY_TOKEN') }}"
+        filters:
+          "tag:AnsibleType": Kafka
+          instance-state-name: [ "running" ]
+      register: kafkas
+    - name: Add the zookeepers
+      add_host:
+        name: "{{ item.private_ip_address }}"
+        group: "zookeepers"
+      with_items:
+        "{{ zookeepers.instances }}"
+    - name: Add the kafka
+      add_host:
+        name: "{{ item.private_ip_address }}"
+        group: "kafkas"
+      with_items:
+        "{{ kafkas.instances }}"
+    - name: Store the zookeeper object in a host to be used in the next playbook
+      add_host:
+        name: "zookeeper_repo"
+        exported_zookeeper: "{{ zookeepers }}"
+    - name: Store the kafka object in a host to be used in the next playbook
+      add_host:
+        name: "kafka_repo"
+        exported_kafka: "{{ kafkas }}"
+
+- name: Configure the zookeepers and kafka instances
+  hosts: zookeepers:kafkas
+  become: yes
+  vars:
+    kafka_cluster_id: 1
+    zookeeper_memory: 512
+    kafka_mem: 4096
+    zookeepers_sequence: "
+                             {%- set ips = [] %}
+                             {%- for host in hostvars['zookeeper_repo']['exported_zookeeper'].instances %}
+                             {{- ips.append(host.tags.AnsibleBrokerIDSequence) }}
+                             {{- ips.append(':') }}
+                             {{- ips.append(host.network_interfaces[0].private_ip_address) }}
+                             {{- ips.append(',') }}
+                             {%- endfor %}
+                             {{- ips | join('') -}}"
+    kafka_zoo: "
+                             {%- set ips = [] %}
+                             {%- for host in hostvars['zookeeper_repo']['exported_zookeeper'].instances %}
+                             {{- ips.append(host.network_interfaces[0].private_ip_address) }}
+                             {{- ips.append(':2181,') }}
+                             {%- endfor %}
+                             {{- ips | join('') -}}"
+    zookeepers: "{{ hostvars['zookeeper_repo']['exported_zookeeper'] }}"
+    kafkas: "{{ hostvars['kafka_repo']['exported_kafka'] }}"
+  tasks:
+    - name: Write the zookeeper template to the target server.
+      template:
+        src: templates/zookeeper.jinja2
+        dest: /tmp/kafka-configuration.sh
+        mode: 0766
+      when: inventory_hostname in groups['zookeepers']
+    - name: Write the kafka template to the target server.
+      template:
+        src: templates/kafka.jinja2
+        dest: /tmp/kafka-configuration.sh
+        mode: 0766
+      when: inventory_hostname in groups['kafkas']
+    - name: Replace zookeeper configuration own address in 0.0.0.0
+      replace:
+        path: /tmp/kafka-configuration.sh
+        regexp: "{{ ansible_default_ipv4.address }},"
+        replace: "0.0.0.0,"
+    - name: Run the configuration to configure both kafka and zookeeper
+      shell: /tmp/kafka-configuration.sh
+    - name: Restart zookeeper to read the configuration.
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+      with_items:
+      - zookeeper
+      when: inventory_hostname in groups['zookeepers']
+    - name: Restart kafka to read the configuration.
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+      with_items:
+        - kafka
+      when: inventory_hostname in groups['kafkas']
+
+

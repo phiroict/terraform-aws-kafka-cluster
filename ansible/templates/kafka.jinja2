@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+{% set local_address = hostvars[inventory_hostname]['ansible_default_ipv4']['address'] %}
+{% for kafka in kafkas.instances %}
+    {% if  local_address == kafka.network_interfaces[0].private_ip_address %}
+        {%  set broker_id = kafka.tags.AnsibleBrokerIDSequence  %}
+sudo kafka_config -a {{local_address}} -E -i {{ broker_id }} -m {{kafka_mem}}m -S -z {{kafka_zoo}}
+    {% endif %}
+{% endfor %}
+
+

@@ -1,0 +1,153 @@
+{
+  "_copyright": "2019 Philip Rodrigues",
+  "_author": "Philip Rodrigues <http://github.com/phiroict>",
+  "_license": "SPDX-License-Identifier: MIT",
+  "variables": {
+    "aws_access_key": "{{env `AWS_KEY`}}",
+    "aws_ami_name": "kafka",
+    "aws_ami_name_prefix": "",
+    "aws_instance_type": "t2.micro",
+    "aws_region": "{{env `AWS_DEFAULT_REGION`}}",
+    "aws_secret_key": "{{env `AWS_SECRET`}}",
+    "aws_ssh_username": "admin",
+    "java_build_number": "12",
+    "java_major_version": "8",
+    "java_token": "e758a0de34e24606bca991d704f6dcbf",
+    "java_update_version": "212",
+    "kafka_scala_version": "2.11",
+    "kafka_uid": "2008",
+    "kafka_version": "{{env `kafka_version`}}",
+    "os_short_arch": "x64",
+    "system_locale": "en_US",
+    "ssh_key_pub_path": "/home/phiro/.ssh/id_rsa_kafka.pub"
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "access_key": "{{user `aws_access_key`}}",
+      "secret_key": "{{user `aws_secret_key`}}",
+      "region": "{{user `aws_region`}}",
+      "instance_type": "{{user `aws_instance_type`}}",
+      "ssh_username": "{{user `aws_ssh_username`}}",
+      "associate_public_ip_address": true,
+      "ami_name": "{{user `aws_ami_name_prefix`}}{{user `aws_ami_name`}}-{{user `kafka_version`}}-({{isotime \"20060102150405\"}})",
+      "source_ami_filter": {
+        "filters": {
+          "architecture": "x86_64",
+          "name": "debian-stretch-*",
+          "root-device-type": "ebs",
+          "virtualization-type": "hvm"
+        },
+        "owners": [
+          "379101102735"
+        ],
+        "most_recent": true
+      }
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "file",
+      "source": "{{user `ssh_key_pub_path`}}",
+      "destination": "/tmp/id_rsa.pub"
+    },
+    {
+      "type": "file",
+      "source": "files/sysctl/",
+      "destination": "/tmp"
+    },
+    {
+      "type": "file",
+      "source": "files/systemd/",
+      "destination": "/tmp"
+    },
+    {
+      "type": "file",
+      "source": "files/kafka/",
+      "destination": "/tmp"
+    },
+    {
+      "type": "file",
+      "source": "files/zookeeper/",
+      "destination": "/tmp"
+    },
+    {
+      "type": "shell",
+      "inline_shebang": "/bin/bash -e",
+      "environment_vars": [
+        "DEBIAN_FRONTEND=noninteractive"
+      ],
+      "inline": [
+        "unset HISTFILE",
+        "history -cw",
+        "echo === Waiting for Cloud-Init ===",
+        "timeout 180 /bin/bash -c 'until stat /var/lib/cloud/instance/boot-finished &>/dev/null; do echo waiting...; sleep 6; done'",
+        "echo === System Packages ===",
+        "echo 'deb http://ftp.debian.org/debian stretch-backports main contrib non-free' | sudo tee /etc/apt/sources.list.d/backports.list > /dev/null",
+        "sudo apt-get -qq update",
+        "sudo apt-get -y -qq install --no-install-recommends apt-transport-https apt-show-versions bash-completion logrotate ntp ntpdate htop vim wget curl dbus bmon nmon parted wget curl sudo rsyslog ethtool unzip zip telnet tcpdump strace tar libyaml-0-2 lsb-base lsb-release xfsprogs sysfsutils openjdk-8-jre",
+        "sudo apt-get -y -qq --purge autoremove",
+        "sudo apt-get autoclean",
+        "sudo apt-get clean",
+        "echo === System Settings ===",
+        "echo 'dash dash/sh boolean false' | sudo debconf-set-selections",
+        "sudo dpkg-reconfigure -f noninteractive dash",
+        "sudo update-locale LC_CTYPE={{user `system_locale`}}.UTF-8",
+        "echo 'export TZ=:/etc/localtime' | sudo tee /etc/profile.d/tz.sh > /dev/null",
+        "sudo update-alternatives --set editor /usr/bin/vim.basic",
+        "echo === Sysctl ===",
+        "sudo cp /tmp/50-kafka.conf /etc/sysctl.d/",
+        "sudo chown root:root /etc/sysctl.d/50-kafka.conf",
+        "sudo chmod 0644 /etc/sysctl.d/50-kafka.conf",
+        "sudo sysctl -p /etc/sysctl.d/50-kafka.conf",
+        "echo === Kafka ===",
+        "sudo groupadd -g {{user `kafka_uid`}} kafka",
+        "sudo useradd -m -u {{user `kafka_uid`}} -g {{user `kafka_uid`}} -c 'Apache Kafka' -s /bin/bash -d /srv/kafka kafka",
+        "curl -sL --retry 3 --insecure 'https://archive.apache.org/dist/kafka/{{user `kafka_version`}}/kafka_{{user `kafka_scala_version`}}-{{user `kafka_version`}}.tgz' | sudo tar xz --strip-components=1 -C /srv/kafka/",
+        "sudo find /srv/kafka/{bin,config} -iname \\*zookeeper\\* -type f -delete",
+        "sudo mkdir -p /data/kafka",
+        "sudo mkdir -p /var/log/kafka",
+        "sudo ln -s /var/log/kafka /srv/kafka/logs",
+        "sudo ln -s /data/kafka /srv/kafka/data",
+        "echo -e \"export LOG_DIR=\\\"/var/log/kafka\\\"\\nexport KAFKA_DEBUG=\\\"\\\"\\nexport KAFKA_HEAP_OPTS=\\\"-Xmx\\$(/usr/bin/awk '/MemTotal/{m=\\$2*.65;print int(m)\\\"k\\\"}' /proc/meminfo) -Xms\\$(/usr/bin/awk '/MemTotal/{m=\\$2*.65;print int(m)\\\"k\\\"}' /proc/meminfo)\\\"\" | sudo tee /srv/kafka/bin/kafka-env.sh > /dev/null",
+        "sudo sed -i -r -e '/^base_dir/a \\\\nif [ -f ${base_dir}/kafka-env.sh ]; then\\n  . ${base_dir}/kafka-env.sh\\nfi' /srv/kafka/bin/kafka-server-start.sh",
+        "###sudo sed -i -r -e '/^log4j.rootLogger/i kafka.logs.dir=\\/var\\/log\\/kafka\\n' /srv/kafka/config/log4j.properties",
+        "sudo sed -i -r -e 's/# *delete.topic.enable/delete.topic.enable/;/^delete.topic.enable/s/=.*/=true/' /srv/kafka/config/server.properties",
+        "sudo sed -i -r -e 's/# *listeners=/listeners=/;/^listeners=/s/=.*/=PLAINTEXT:\\/\\/0.0.0.0:9092/' /srv/kafka/config/server.properties",
+        "sudo sed -i -r -e 's/# *advertised.listeners/advertised.listeners/;/^advertised.listeners/s/=.*/=PLAINTEXT:\\/\\/localhost:9092/' /srv/kafka/config/server.properties",
+        "sudo sed -i -r -e 's/# *socket.send.buffer.bytes/socket.send.buffer.bytes/;/^socket.send.buffer.bytes/s/=.*/=33554432/' /srv/kafka/config/server.properties",
+        "sudo sed -i -r -e 's/# *socket.receive.buffer.bytes/socket.receive.buffer.bytes/;/^socket.receive.buffer.bytes/s/=.*/=33554432/' /srv/kafka/config/server.properties",
+        "sudo sed -i -r -e 's/# *log.dirs/log.dirs/;/^log.dirs/s/=.*/=\\/data\\/kafka/' /srv/kafka/config/server.properties",
+        "sudo sed -i -r -e 's/# *group.id/group.id/;/^group.id/s/=.*/=kafka-mirror/' /srv/kafka/config/consumer.properties",
+        "sudo sed -i -r -e '/^receive.buffer.bytes/{h;s/=.*/=33554432/};${x;/^$/{s//receive.buffer.bytes=33554432/;H};x}' /srv/kafka/config/consumer.properties",
+        "sudo sed -i -r -e 's/# *compression.type/compression.type/;/^compression.type/s/=.*/=lz4/' /srv/kafka/config/producer.properties",
+        "sudo chown -R kafka:kafka /srv/kafka /data/kafka /var/log/kafka",
+        "sudo cp /tmp/kafka.service /lib/systemd/system/",
+        "sudo systemctl daemon-reload",
+        "sudo systemctl disable kafka.service",
+        "sudo cp /tmp/kafka_config /usr/local/bin/",
+        "sudo chown root:staff /usr/local/bin/kafka_config",
+        "sudo chmod 0755 /usr/local/bin/kafka_config",
+        "echo === Extra System Settings ===",
+        "sudo sed -r -i -e 's/.*(GRUB_CMDLINE_LINUX_DEFAULT)=\"(.*)\"/\\1=\"\\2 elevator=deadline\"/' /etc/default/grub",
+        "sudo update-grub2",
+        "mkdir -p /home/{{user `aws_ssh_username`}}/.ssh",
+        "chown {{user `aws_ssh_username`}}:{{user `aws_ssh_username`}} -R /home/{{user `aws_ssh_username`}}/.ssh",
+        "cat /tmp/id_rsa.pub >> /home/{{user `aws_ssh_username`}}/.ssh/authorized_keys",
+        "echo === System Cleanup ===",
+        "sudo rm -f /root/.bash_history",
+        "sudo rm -f /home/{{user `aws_ssh_username`}}/.bash_history",
+        "sudo rm -f /var/log/wtmp",
+        "sudo rm -f /var/log/btmp",
+        "sudo rm -rf /var/log/installer",
+        "sudo rm -rf /var/lib/cloud/instances",
+        "sudo rm -rf /tmp/* /var/tmp/* /tmp/.*-unix",
+        "sudo find /var/cache -type f -delete",
+        "sudo find /var/log -type f | while read f; do echo -n '' | sudo tee $f > /dev/null; done;",
+        "sudo find /var/lib/apt/lists -not -name lock -type f -delete",
+        "sudo sync",
+        "echo === All Done ==="
+      ]
+    }
+  ]
+}

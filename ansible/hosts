@@ -1,0 +1,7 @@
+[ssh_connection]
+ansible_ssh_common_args = '-F /home/phiro/IdeaProjects/phiroict/kafka-packer-terraform-aws/ansible/ssh.cfg'
+
+
+[jumphost]
+jumphost
+
