@@ -1,4 +1,5 @@
 # Apache Kafka Cluster from scratch
+
 This creates a kafka cluster on AWS. 
 He module creates the infrastructure, there is a pre and and a post stap that is outside the module's power. 
 The readme will talk you how to go the the pre and post staps. 
