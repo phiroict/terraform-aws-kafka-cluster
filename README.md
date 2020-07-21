@@ -66,7 +66,7 @@ You need:
 PRE  
 Setup aws-vault with 
 ```
-aws add home
+aws-vault add home
 ```
 Follow the instructions   
 
